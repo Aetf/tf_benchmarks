@@ -25,6 +25,7 @@ from collections import defaultdict
 import os
 import threading
 import time
+from datetime import datetime
 
 import numpy as np
 
@@ -629,7 +630,7 @@ def create_config_proto():
   config.allow_soft_placement = True
   config.intra_op_parallelism_threads = FLAGS.num_intra_threads
   config.inter_op_parallelism_threads = FLAGS.num_inter_threads
-  config.gpu_options.force_gpu_compatible = FLAGS.force_gpu_compatible
+  # config.gpu_options.force_gpu_compatible = FLAGS.force_gpu_compatible
   return config
 
 
@@ -670,9 +671,9 @@ def benchmark_one_step(sess, fetches, step, batch_size,
   train_time = time.time() - start_time
   step_train_times.append(train_time)
   if step >= 0 and (step == 0 or (step + 1) % FLAGS.display_every == 0):
-    log_fn('%i\t%s\t%.3f' % (
-        step + 1, get_perf_timing_str(batch_size, step_train_times),
-        lossval))
+    log_fn('{}: Step {}, loss={:.2f} ({:.1f} examples/sec; {:.3f} sec/batch)'.format(
+      datetime.now(), step, lossval, batch_size / train_time, train_time
+    ))
   if trace_filename is not None and step == -1:
     log_fn('Dumping trace to', trace_filename)
     trace = timeline.Timeline(step_stats=run_metadata.step_stats)
@@ -970,7 +971,7 @@ class BenchmarkCNN(object):
 
     step_train_times = []
     with sv.managed_session(
-        master=self.server.target if self.server else '',
+        master=self.server.target if self.server else 'zrpc://tcp://localhost:5501',
         config=create_config_proto(),
         start_standard_services=FLAGS.summary_verbosity > 0) as sess:
       for i in xrange(len(enqueue_ops)):
@@ -1033,6 +1034,9 @@ class BenchmarkCNN(object):
       images_per_sec = global_step_watcher.steps_per_second() * self.batch_size
       log_fn('-' * 64)
       log_fn('total images/sec: %.2f' % images_per_sec)
+      log_fn('Average: {:.3f} sec/batch'.format(np.mean(step_train_times)))
+      log_fn('First iteration: {:.3f} sec/batch'.format(step_train_times[0]))
+      log_fn('Average excluding first iteration: {:.3f} sec/batch'.format(np.mean(step_train_times[1:])))
       log_fn('-' * 64)
       if is_chief:
         store_benchmarks({'total_images_per_sec': images_per_sec})
