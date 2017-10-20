@@ -737,7 +737,7 @@ class BenchmarkCNN(object):
     self.model_conf = model_config.get_model_config(self.model)
     self.trace_filename = FLAGS.trace_file
     self.data_format = FLAGS.data_format
-  
+
     try:
       self.num_batches = os.getenv('EXEC_ITER_NUMBER', default='20')
     except ValueError:
@@ -1363,6 +1363,7 @@ def main(_):
   while not done:
     try:
       bench.run()
+      done = True
     except Exception as ex:
       log_fn('Retrying due to error: ', ex)
       import traceback
