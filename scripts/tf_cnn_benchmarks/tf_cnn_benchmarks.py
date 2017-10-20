@@ -46,6 +46,14 @@ import model_config
 import preprocessing
 import variable_mgr
 
+
+def intfromenv(name, default=20):
+  try:
+    return int(os.getenv(name, default=str(default)))
+  except ValueError:
+    return default
+
+
 tf.flags.DEFINE_string('model', 'trivial', 'name of the model to run')
 
 # The code will first check if it's running under benchmarking mode
@@ -61,7 +69,7 @@ tf.flags.DEFINE_boolean('eval', False, 'whether use eval or benchmarking')
 tf.flags.DEFINE_boolean('forward_only', False, """whether use forward-only or
                          training for benchmarking""")
 tf.flags.DEFINE_integer('batch_size', 0, 'batch size per compute device')
-tf.flags.DEFINE_integer('num_batches', 100,
+tf.flags.DEFINE_integer('num_batches', intfromenv('EXEC_ITER_NUMBER', 20),
                         'number of batches to run, excluding warmup')
 tf.flags.DEFINE_integer('num_warmup_batches', None,
                         'number of batches to run before timing')
@@ -728,7 +736,13 @@ class BenchmarkCNN(object):
     self.model_conf = model_config.get_model_config(self.model)
     self.trace_filename = FLAGS.trace_file
     self.data_format = FLAGS.data_format
+  
+    try:
+      self.num_batches = os.getenv('EXEC_ITER_NUMBER', default='20')
+    except ValueError:
+      pass
     self.num_batches = FLAGS.num_batches
+
     autotune_threshold = FLAGS.autotune_threshold if (
         FLAGS.autotune_threshold) else 1
     min_autotune_warmup = 5 * autotune_threshold * autotune_threshold
