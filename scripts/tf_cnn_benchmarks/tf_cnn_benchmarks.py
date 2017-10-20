@@ -26,6 +26,7 @@ import os
 import threading
 import time
 from datetime import datetime
+from timeit import default_timer
 
 import numpy as np
 
@@ -1356,7 +1357,19 @@ def main(_):
   log_fn('TensorFlow:  %i.%i' % (tfversion[0], tfversion[1]))
 
   bench.print_info()
-  bench.run()
+
+  start = default_timer()
+  done = False
+  while not done:
+    try:
+      bench.run()
+    except Exception as ex:
+      log_fn('Retrying due to error: ', ex)
+      import traceback
+      traceback.print_exc()
+      time.sleep(1)
+  duration = default_timer() - start
+  log_fn('JCT: {:.3f} s'.format(duration))
 
 
 if __name__ == '__main__':
