@@ -66,6 +66,7 @@ tf.flags.DEFINE_string('model', 'trivial', 'name of the model to run')
 # Under the benchmarking mode, user can specify whether nor not to use
 #   the forward-only option, which will only compute the loss function.
 #   forward-only cannot be enabled with eval at the same time.
+tf.flags.DEFINE_boolean('use_salus', True, 'whether use Salus executor or vanilla TF')
 tf.flags.DEFINE_boolean('eval', False, 'whether use eval or benchmarking')
 tf.flags.DEFINE_boolean('forward_only', False, """whether use forward-only or
                          training for benchmarking""")
@@ -640,6 +641,37 @@ def create_config_proto():
   config.intra_op_parallelism_threads = FLAGS.num_intra_threads
   config.inter_op_parallelism_threads = FLAGS.num_inter_threads
   # config.gpu_options.force_gpu_compatible = FLAGS.force_gpu_compatible
+  if FLAGS.use_salus:
+    MB = 1024 * 1024
+    memusage = {
+      ('resnet50', 25): ((2104 - 14.1) * MB, 14.1 * MB),
+      ('resnet50', 50): ((4005.5 - 28.8) * MB, 28.8 * MB),
+      ('resnet50', 75): ((5906.9 - 43.4) * MB, 43.4 * MB),
+      ('resnet101', 25): ((3225.1 - 14.3) * MB, 14.3 * MB),
+      ('resnet101', 50): ((6102.6 - 28.6) * MB, 28.6 * MB),
+      ('resnet101', 75): ((8980.7 - 43.5) * MB, 43.5 * MB),
+      ('resnet152', 25): ((4546.6 - 14.2) * MB, 14.2 * MB),
+      ('resnet152', 50): ((8634.2 - 28.9) * MB, 28.9 * MB),
+      ('resnet152', 75): ((12717.8 - 43.3) * MB, 43.3 * MB),
+      ('googlenet', 25): ((742.6 - 14.4) * MB, 14.4 * MB),
+      ('googlenet', 50): ((1399.4 - 28.8) * MB, 28.8 * MB),
+      ('googlenet', 100): ((2530.6 - 57.5) * MB, 57.5 * MB),
+      ('alexnet', 25): ((630.8 - 14.8) * MB, 14.8 * MB),
+      ('alexnet', 50): ((1062.6 - 29.5) * MB, 29.5 * MB),
+      ('alexnet', 100): ((1240 - 59) * MB, 59 * MB),
+      ('overfeat', 25): ((3255.3 - 15.3) * MB, 15.3 * MB),
+      ('overfeat', 50): ((3416.5 - 30.7) * MB, 30.7 * MB),
+      ('overfeat', 100): ((6184 - 86.2) * MB, 86.2 * MB),
+      ('inception3', 25): ((2478.7 - 25.6) * MB, 25.6 * MB),
+      ('inception3', 50): ((4794.5 - 51.9) * MB, 51.9 * MB),
+      ('inception3', 100): ((9390 - 103) * MB, 103 * MB),
+      ('inception4', 25): ((4435.1 - 26) * MB, 26 * MB),
+      ('inception4', 50): ((8529.3 - 52) * MB, 52 * MB),
+      ('inception4', 75): ((12610.8 - 77) * MB, 77 * MB),
+    }
+    T, P = memusage[FLAGS.model, FLAGS.batch_size]
+    config.zmq_options.resource_map.temporary['MEMORY:GPU'] = T
+    config.zmq_options.resource_map.persistant['MEMORY:GPU'] = P
   return config
 
 
@@ -984,9 +1016,16 @@ class BenchmarkCNN(object):
         save_model_secs=FLAGS.save_model_secs,
         summary_writer=summary_writer)
 
+    if FLAGS.use_salus:
+      master_target = 'zrpc://tcp://localhost:5501'
+    elif self.server:
+      master_target = self.server.target
+    else:
+      master_target = ''
+
     step_train_times = []
     with sv.managed_session(
-        master=self.server.target if self.server else 'zrpc://tcp://localhost:5501',
+        master=master_target,
         config=create_config_proto(),
         start_standard_services=FLAGS.summary_verbosity > 0) as sess:
       for i in xrange(len(enqueue_ops)):
