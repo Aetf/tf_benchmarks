@@ -66,7 +66,7 @@ tf.flags.DEFINE_string('model', 'trivial', 'name of the model to run')
 # Under the benchmarking mode, user can specify whether nor not to use
 #   the forward-only option, which will only compute the loss function.
 #   forward-only cannot be enabled with eval at the same time.
-tf.flags.DEFINE_boolean('use_salus', True, 'whether use Salus executor or vanilla TF')
+tf.flags.DEFINE_string('executor', 'salus', 'whether use Salus executor or vanilla TF')
 tf.flags.DEFINE_boolean('eval', False, 'whether use eval or benchmarking')
 tf.flags.DEFINE_boolean('forward_only', False, """whether use forward-only or
                          training for benchmarking""")
@@ -641,7 +641,7 @@ def create_config_proto():
   config.intra_op_parallelism_threads = FLAGS.num_intra_threads
   config.inter_op_parallelism_threads = FLAGS.num_inter_threads
   # config.gpu_options.force_gpu_compatible = FLAGS.force_gpu_compatible
-  if FLAGS.use_salus:
+  if FLAGS.executor == 'salus':
     MB = 1024 * 1024
     memusage = {
       ('resnet50', 25): ((2104 - 14.1) * MB, 14.1 * MB),
@@ -1016,7 +1016,7 @@ class BenchmarkCNN(object):
         save_model_secs=FLAGS.save_model_secs,
         summary_writer=summary_writer)
 
-    if FLAGS.use_salus:
+    if FLAGS.executor == 'salus':
       master_target = 'zrpc://tcp://localhost:5501'
     elif self.server:
       master_target = self.server.target
@@ -1389,6 +1389,9 @@ def main(_):
   argparse.ArgumentParser(
       formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
+
+  print(FLAGS.executor)
+  return
 
   bench = BenchmarkCNN()
 
