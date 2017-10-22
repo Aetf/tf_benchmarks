@@ -1042,7 +1042,8 @@ class BenchmarkCNN(object):
           len(self.worker_hosts) * self.num_warmup_batches + init_global_step,
           len(self.worker_hosts) * (
               self.num_warmup_batches + self.num_batches) - 1)
-      global_step_watcher.start()
+      if FLAGS.executor != 'salus':
+        global_step_watcher.start()
 
       if self.graph_file is not None:
         path, filename = os.path.split(self.graph_file)
@@ -1057,6 +1058,8 @@ class BenchmarkCNN(object):
       if FLAGS.cross_replica_sync and FLAGS.job_name:
         # In cross-replica sync mode, all workers must run the same number of
         # local steps, or else the workers running the extra step will block.
+        done_fn = lambda: local_step == self.num_batches
+      elif FLAGS.executor == 'salus':
         done_fn = lambda: local_step == self.num_batches
       else:
         done_fn = lambda: global_step_watcher.done()
@@ -1083,16 +1086,17 @@ class BenchmarkCNN(object):
           sv.summary_computed(sess, summary_str)
         local_step += 1
       # Waits for the global step to be done, regardless of done_fn.
-      while not global_step_watcher.done():
+      while FLAGS.executor != 'salus' and not global_step_watcher.done():
         time.sleep(.25)
-      images_per_sec = global_step_watcher.steps_per_second() * self.batch_size
       log_fn('-' * 64)
-      log_fn('total images/sec: %.2f' % images_per_sec)
+      if FLAGS.executor != 'salus':
+          images_per_sec = global_step_watcher.steps_per_second() * self.batch_size
+          log_fn('total images/sec: %.2f' % images_per_sec)
       log_fn('Average: {:.3f} sec/batch'.format(np.mean(step_train_times)))
       log_fn('First iteration: {:.3f} sec/batch'.format(step_train_times[0]))
       log_fn('Average excluding first iteration: {:.3f} sec/batch'.format(np.mean(step_train_times[1:])))
       log_fn('-' * 64)
-      if is_chief:
+      if is_chief and FLAGS.executor != 'salus':
         store_benchmarks({'total_images_per_sec': images_per_sec})
       # Save the model checkpoint.
       if FLAGS.train_dir is not None and is_chief:
@@ -1388,10 +1392,6 @@ def main(_):
   os.environ['TF_SYNC_ON_FINISH'] = str(int(FLAGS.sync_on_finish))
   argparse.ArgumentParser(
       formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-
-
-  print(FLAGS.executor)
-  return
 
   bench = BenchmarkCNN()
 
