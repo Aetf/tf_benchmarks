@@ -27,6 +27,7 @@ import threading
 import time
 from datetime import datetime
 from timeit import default_timer
+from random import randint
 
 import numpy as np
 
@@ -67,6 +68,7 @@ tf.flags.DEFINE_string('model', 'trivial', 'name of the model to run')
 #   the forward-only option, which will only compute the loss function.
 #   forward-only cannot be enabled with eval at the same time.
 tf.flags.DEFINE_string('executor', 'salus', 'whether use Salus executor or vanilla TF')
+tf.flags.DEFINE_boolean('rand_delay', False, 'whether delay random time between iterations')
 tf.flags.DEFINE_boolean('eval', False, 'whether use eval or benchmarking')
 tf.flags.DEFINE_boolean('forward_only', False, """whether use forward-only or
                          training for benchmarking""")
@@ -782,10 +784,6 @@ class BenchmarkCNN(object):
     self.trace_filename = FLAGS.trace_file
     self.data_format = FLAGS.data_format
 
-    try:
-      self.num_batches = os.getenv('EXEC_ITER_NUMBER', default='20')
-    except ValueError:
-      pass
     self.num_batches = FLAGS.num_batches
 
     autotune_threshold = FLAGS.autotune_threshold if (
@@ -1097,6 +1095,8 @@ class BenchmarkCNN(object):
         if summary_str is not None and is_chief:
           sv.summary_computed(sess, summary_str)
         local_step += 1
+        if FLAGS.rand_delay:
+            time.sleep(randint(100,500) / 1000.0) # delay randomly from 100ms to 500 ms
       # Waits for the global step to be done, regardless of done_fn.
       while FLAGS.executor != 'salus' and not global_step_watcher.done():
         time.sleep(.25)
