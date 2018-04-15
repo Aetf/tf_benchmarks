@@ -1418,11 +1418,9 @@ def main(_):
     try:
       bench.run()
       done = True
-    except Exception as ex:
-      log_fn('Retrying due to error: ', ex)
-      import traceback
-      traceback.print_exc()
+    except tf.errors.UnavailableError as ex:
       time.sleep(1)
+      log_fn('Retrying due to error: ', ex)
   duration = default_timer() - start
   log_fn('JCT: {:.3f} s'.format(duration))
 
