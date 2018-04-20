@@ -699,8 +699,8 @@ def create_config_proto():
         ('inception4', 75): ((12610.8 - 77) * MB, 77 * MB),
       }
     T, P = memusage[FLAGS.model, FLAGS.batch_size]
-    config.zmq_options.resource_map.temporary['MEMORY:GPU'] = T
-    config.zmq_options.resource_map.persistant['MEMORY:GPU'] = P
+    config.salus_options.resource_map.temporary['MEMORY:GPU'] = T
+    config.salus_options.resource_map.persistant['MEMORY:GPU'] = P
   return config
 
 
