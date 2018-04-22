@@ -69,6 +69,7 @@ tf.flags.DEFINE_string('model', 'trivial', 'name of the model to run')
 #   the forward-only option, which will only compute the loss function.
 #   forward-only cannot be enabled with eval at the same time.
 tf.flags.DEFINE_string('executor', 'salus', 'whether use Salus executor or vanilla TF')
+tf.flags.DEFINE_boolean('min_mem', True, 'whether to restrict TF mem usage absed on profiling data')
 tf.flags.DEFINE_string('mem_csv', 'mem-baseline.csv', 'Load memory usage from csv file')
 tf.flags.DEFINE_boolean('rand_delay', False, 'whether delay random time between iterations')
 tf.flags.DEFINE_boolean('eval', False, 'whether use eval or benchmarking')
@@ -645,9 +646,9 @@ def create_config_proto():
   config.intra_op_parallelism_threads = FLAGS.num_intra_threads
   config.inter_op_parallelism_threads = FLAGS.num_inter_threads
   # config.gpu_options.force_gpu_compatible = FLAGS.force_gpu_compatible
-  if FLAGS.executor == 'salus':
+  memusage = {}
+  if FLAGS.executor == 'salus' or FLAGS.min_mem:
     MB = 1024 * 1024
-    memusage = {}
     if FLAGS.mem_csv:
       with open(FLAGS.mem_csv) as f:
         reader = csv.DictReader(f)
@@ -698,9 +699,13 @@ def create_config_proto():
         ('inception4', 50): ((8529.3 - 52) * MB, 52 * MB),
         ('inception4', 75): ((12610.8 - 77) * MB, 77 * MB),
       }
-    T, P = memusage[FLAGS.model, FLAGS.batch_size]
+  T, P = memusage[FLAGS.model, FLAGS.batch_size]
+  if FLAGS.executor == 'salus':
     config.salus_options.resource_map.temporary['MEMORY:GPU'] = T
     config.salus_options.resource_map.persistant['MEMORY:GPU'] = P
+  if FLAGS.min_mem:
+    total = 14 * (1024 ** 3)
+    config.gpu_options.per_process_gpu_memory_fraction = (T + P) / total + 0.05
   return config
 
 
