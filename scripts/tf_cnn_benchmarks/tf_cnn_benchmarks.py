@@ -1025,6 +1025,7 @@ class BenchmarkCNN(object):
 
     local_var_init_op = tf.local_variables_initializer()
     summary_op = tf.summary.merge_all()
+    salus_marker = tf.random_normal([1], name="salus_main_iter")
     is_chief = (not self.job_name or self.task_index == 0)
     summary_writer = None
     if (is_chief and FLAGS.summary_verbosity and
@@ -1109,6 +1110,7 @@ class BenchmarkCNN(object):
           fetch_summary = summary_op
         else:
           fetch_summary = None
+        fetches.append(salus_marker)
         summary_str = benchmark_one_step(
             sess, fetches, local_step, self.batch_size, step_train_times,
             self.trace_filename, fetch_summary)
