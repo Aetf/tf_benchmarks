@@ -664,6 +664,10 @@ def create_config_proto():
   if FLAGS.executor == 'salus':
     config.salus_options.resource_map.temporary['MEMORY:GPU'] = T
     config.salus_options.resource_map.persistant['MEMORY:GPU'] = P
+    import sys
+    if 'SALUS_TOTAL_TIME' in sys.environ:
+        totalTime = int(sys.environ['SALUS_TOTAL_TIME'])
+        config.salus_options.resource_map.persistant['TIME:TOTAL'] = totalTime
   if FLAGS.min_mem:
     total = 14 * (1024 ** 3)
     config.gpu_options.per_process_gpu_memory_fraction = (T + P) / total + 0.05
