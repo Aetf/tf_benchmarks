@@ -666,9 +666,12 @@ def create_config_proto():
       modelkey = FLAGS.model + "eval"
     else:
       modelkey = FLAGS.model
-    T, P = memusage[modelkey, FLAGS.batch_size]
-    config.salus_options.resource_map.temporary['MEMORY:GPU'] = T
-    config.salus_options.resource_map.persistant['MEMORY:GPU'] = P
+    if (modelkey, FLAGS.batch_size) in memusage:
+      T, P = memusage[modelkey, FLAGS.batch_size]
+      config.salus_options.resource_map.temporary['MEMORY:GPU'] = T
+      config.salus_options.resource_map.persistant['MEMORY:GPU'] = P
+    else:
+      log_fn("WARNING: no memory info available for {}_{}".format(modelkey, FLAGS.batch_size))
     if 'SALUS_TOTAL_TIME' in os.environ:
       totalTime = int(os.environ['SALUS_TOTAL_TIME'])
       config.salus_options.resource_map.persistant['TIME:TOTAL'] = totalTime
