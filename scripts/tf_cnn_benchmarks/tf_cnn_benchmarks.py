@@ -844,6 +844,8 @@ class BenchmarkCNN(object):
       self.param_server_device = '/%s:0' % FLAGS.local_parameter_device
       self.sync_queue_devices = [self.param_server_device]
 
+    if FLAGS.executor == 'tfdist':
+        worker_prefix = '/job:tfworker'
     # Device to use for ops that need to always run on the local worker's CPU.
     self.cpu_device = '%s/cpu:0' % worker_prefix
 
@@ -1016,6 +1018,8 @@ class BenchmarkCNN(object):
 
     if FLAGS.executor == 'salus':
       master_target = 'zrpc://tcp://localhost:5501'
+    elif FLAGS.executor == 'tfdist':
+      master_target = 'grpc://127.0.0.1:2345'
     elif self.server:
       master_target = self.server.target
     else:
@@ -1040,7 +1044,7 @@ class BenchmarkCNN(object):
           len(self.worker_hosts) * self.num_warmup_batches + init_global_step,
           len(self.worker_hosts) * (
               self.num_warmup_batches + self.num_batches) - 1)
-      if FLAGS.executor != 'salus':
+      if FLAGS.executor != 'salus' or FLAGS.executor != 'tfdist':
         global_step_watcher.start()
 
       if self.graph_file is not None:
