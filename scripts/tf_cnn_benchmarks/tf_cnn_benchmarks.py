@@ -662,11 +662,16 @@ def create_config_proto():
           memusage[model, bs] = (float(tmpMem), float(perMem))
   T, P = memusage[FLAGS.model, FLAGS.batch_size]
   if FLAGS.executor == 'salus':
-    config.salus_options.resource_map.temporary['MEMORY:GPU'] = T
-    config.salus_options.resource_map.persistant['MEMORY:GPU'] = P
-    if 'SALUS_TOTAL_TIME' in os.environ:
+    if not FLAGS.eval:
+      config.salus_options.resource_map.temporary['MEMORY:GPU'] = T
+      config.salus_options.resource_map.persistant['MEMORY:GPU'] = P
+      if 'SALUS_TOTAL_TIME' in os.environ:
         totalTime = int(os.environ['SALUS_TOTAL_TIME'])
         config.salus_options.resource_map.persistant['TIME:TOTAL'] = totalTime
+    else:
+      # also use persistent as temporary as eval
+      config.salus_options.resource_map.temporary['MEMORY:GPU'] = T
+      config.salus_options.resource_map.persistant['MEMORY:GPU'] = P
   if FLAGS.min_mem:
     total = 14 * (1024 ** 3)
     fraction = (T + P) // total + 0.05
@@ -935,7 +940,12 @@ class BenchmarkCNN(object):
     saver = tf.train.Saver(tf.global_variables())
     summary_writer = tf.summary.FileWriter(FLAGS.eval_dir,
                                            tf.get_default_graph())
-    target = ''
+    if FLAGS.executor == 'salus':
+      target = 'zrpc://tcp://localhost:5501'
+    elif FLAGS.executor == 'tfdist':
+      target = 'grpc://127.0.0.1:2345'
+    else:
+      target = ''
     with tf.Session(target=target, config=create_config_proto()) as sess:
       for i in xrange(len(enqueue_ops)):
         sess.run(enqueue_ops[:(i+1)])
