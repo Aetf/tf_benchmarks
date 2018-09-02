@@ -69,7 +69,7 @@ tf.flags.DEFINE_string('model', 'trivial', 'name of the model to run')
 #   the forward-only option, which will only compute the loss function.
 #   forward-only cannot be enabled with eval at the same time.
 tf.flags.DEFINE_string('executor', 'salus', 'whether use Salus executor or vanilla TF')
-tf.flags.DEFINE_boolean('min_mem', True, 'whether to restrict TF mem usage absed on profiling data')
+tf.flags.DEFINE_boolean('min_mem', False, 'whether to restrict TF mem usage absed on profiling data')
 tf.flags.DEFINE_string('mem_csv', 'mem-baseline.csv', 'Load memory usage from csv file')
 tf.flags.DEFINE_boolean('rand_delay', False, 'whether delay random time between iterations')
 tf.flags.DEFINE_boolean('eval', False, 'whether use eval or benchmarking')
@@ -205,8 +205,8 @@ tf.flags.DEFINE_integer('save_summaries_steps', 0,
 tf.flags.DEFINE_integer('save_model_secs', 0,
                         """How often to save trained models. Pass 0 to disable
                         checkpoints""")
-tf.flags.DEFINE_string('train_dir', None,
-                       """Path to session checkpoints.""")
+tf.flags.DEFINE_string('train_dir', None, """Path to session logs.""")
+tf.flags.DEFINE_string('model_dir', None, """Path to session checkpoints.""")
 tf.flags.DEFINE_string('eval_dir', '/tmp/tf_cnn_benchmarks/eval',
                        """Directory where to write eval event logs.""")
 tf.flags.DEFINE_string('pretrain_dir', None,
@@ -660,18 +660,17 @@ def create_config_proto():
           perMem = float(row['Persistent Mem (MB)']) * MB
           bs = int(bs)
           memusage[model, bs] = (float(tmpMem), float(perMem))
-  T, P = memusage[FLAGS.model, FLAGS.batch_size]
   if FLAGS.executor == 'salus':
     if not FLAGS.eval:
-      config.salus_options.resource_map.temporary['MEMORY:GPU'] = T
-      config.salus_options.resource_map.persistant['MEMORY:GPU'] = P
-      if 'SALUS_TOTAL_TIME' in os.environ:
-        totalTime = int(os.environ['SALUS_TOTAL_TIME'])
-        config.salus_options.resource_map.persistant['TIME:TOTAL'] = totalTime
+      modelkey = FLAGS.model
     else:
-      # also use persistent as temporary as eval
-      config.salus_options.resource_map.temporary['MEMORY:GPU'] = T
-      config.salus_options.resource_map.persistant['MEMORY:GPU'] = P
+      modelkey = FLAGS.model + "eval"
+    T, P = memusage[FLAGS.model, FLAGS.batch_size]
+    config.salus_options.resource_map.temporary['MEMORY:GPU'] = T
+    config.salus_options.resource_map.persistant['MEMORY:GPU'] = P
+    if 'SALUS_TOTAL_TIME' in os.environ:
+      totalTime = int(os.environ['SALUS_TOTAL_TIME'])
+      config.salus_options.resource_map.persistant['TIME:TOTAL'] = totalTime
   if FLAGS.min_mem:
     total = 14 * (1024 ** 3)
     fraction = (T + P) // total + 0.05
@@ -748,9 +747,12 @@ def load_checkpoint(saver, sess, ckpt_dir):
     if os.path.isabs(ckpt.model_checkpoint_path):
       # Restores from checkpoint with absolute path.
       model_checkpoint_path = ckpt.model_checkpoint_path
+    elif not os.path.isabs(ckpt_dir):
+      model_checkpoint_path = ckpt.model_checkpoint_path
     else:
       # Restores from checkpoint with relative path.
       model_checkpoint_path = os.path.join(ckpt_dir, ckpt.model_checkpoint_path)
+    model_checkpoint_path = os.path.abspath(model_checkpoint_path)
     # Assuming model_checkpoint_path looks something like:
     #   /my-favorite-path/imagenet_train/model.ckpt-0,
     # extract global_step from it.
@@ -937,6 +939,8 @@ class BenchmarkCNN(object):
   def _eval_cnn(self):
     """Evaluate the model from a checkpoint using validation dataset."""
     (enqueue_ops, fetches) = self._build_model()
+    salus_marker = tf.no_op(name="salus_main_iter")
+    fetches.append(salus_marker)
     saver = tf.train.Saver(tf.global_variables())
     summary_writer = tf.summary.FileWriter(FLAGS.eval_dir,
                                            tf.get_default_graph())
@@ -949,9 +953,12 @@ class BenchmarkCNN(object):
     with tf.Session(target=target, config=create_config_proto()) as sess:
       for i in xrange(len(enqueue_ops)):
         sess.run(enqueue_ops[:(i+1)])
-      if FLAGS.train_dir is None:
+      if FLAGS.model_dir is None:
         raise ValueError('Trained model directory not specified')
-      global_step = load_checkpoint(saver, sess, FLAGS.train_dir)
+      local_var_init_op = tf.local_variables_initializer()
+      sess.run(local_var_init_op)
+      print("Model dir is " + FLAGS.model_dir)
+      global_step = load_checkpoint(saver, sess, FLAGS.model_dir)
 
       start_time = time.time()
       count_top_1 = 0.0
@@ -1113,10 +1120,10 @@ class BenchmarkCNN(object):
       if is_chief and FLAGS.executor != 'salus':
         store_benchmarks({'total_images_per_sec': images_per_sec})
       # Save the model checkpoint.
-      if FLAGS.train_dir is not None and is_chief:
-        checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
-        if not gfile.Exists(FLAGS.train_dir):
-          gfile.MakeDirs(FLAGS.train_dir)
+      if FLAGS.model_dir is not None and is_chief:
+        checkpoint_path = os.path.join(FLAGS.model_dir, 'model.ckpt')
+        if not gfile.Exists(FLAGS.model_dir):
+          gfile.MakeDirs(FLAGS.model_dir)
         sv.saver.save(sess, checkpoint_path, global_step)
 
       if execution_barrier:
