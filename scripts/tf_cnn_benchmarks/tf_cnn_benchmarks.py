@@ -972,7 +972,7 @@ class BenchmarkCNN(object):
         count_top_5 += results[1]
         if (step + 1) % FLAGS.display_every == 0:
           duration = time.time() - start_time
-          examples_per_sec = self.batch_size * self.num_batches / duration
+          examples_per_sec = self.batch_size * FLAGS.display_every / duration
           start_time = time.time()
           log_fn('{}: Step {}, loss={:.2f} ({:.1f} examples/sec; {:.3f} sec/batch)'.format(
             datetime.now(), step, 0, examples_per_sec, infer_time
