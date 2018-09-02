@@ -965,14 +965,18 @@ class BenchmarkCNN(object):
       count_top_5 = 0.0
       total_eval_count = self.num_batches * self.batch_size
       for step in xrange(self.num_batches):
+        begin_time = time.time()
         results = sess.run(fetches)
+        infer_time = time.time() - begin_time
         count_top_1 += results[0]
         count_top_5 += results[1]
         if (step + 1) % FLAGS.display_every == 0:
           duration = time.time() - start_time
           examples_per_sec = self.batch_size * self.num_batches / duration
-          log_fn('%i\t%.1f examples/sec' % (step + 1, examples_per_sec))
           start_time = time.time()
+          log_fn('{}: Step {}, loss={:.2f} ({:.1f} examples/sec; {:.3f} sec/batch)'.format(
+            datetime.now(), step, 0, examples_per_sec, infer_time
+          ))
       precision_at_1 = count_top_1 / total_eval_count
       recall_at_5 = count_top_5 / total_eval_count
       summary = tf.Summary()
