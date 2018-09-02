@@ -73,6 +73,7 @@ tf.flags.DEFINE_boolean('min_mem', False, 'whether to restrict TF mem usage abse
 tf.flags.DEFINE_string('mem_csv', 'mem-baseline.csv', 'Load memory usage from csv file')
 tf.flags.DEFINE_boolean('rand_delay', False, 'whether delay random time between iterations')
 tf.flags.DEFINE_boolean('eval', False, 'whether use eval or benchmarking')
+tf.flags.DEFINE_float('eval_interval_secs', 0.01, 'Interval between secussive eval requests, in second')
 tf.flags.DEFINE_boolean('forward_only', False, """whether use forward-only or
                          training for benchmarking""")
 tf.flags.DEFINE_integer('batch_size', 0, 'batch size per compute device')
@@ -977,6 +978,8 @@ class BenchmarkCNN(object):
           log_fn('{}: Step {}, loss={:.2f} ({:.1f} examples/sec; {:.3f} sec/batch)'.format(
             datetime.now(), step, 0, examples_per_sec, infer_time
           ))
+        if FLAGS.eval_interval_secs > 0:
+          time.sleep(FLAGS.eval_interval_secs)
       precision_at_1 = count_top_1 / total_eval_count
       recall_at_5 = count_top_5 / total_eval_count
       summary = tf.Summary()
