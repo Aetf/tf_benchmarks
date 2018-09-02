@@ -661,11 +661,11 @@ def create_config_proto():
           bs = int(bs)
           memusage[model, bs] = (float(tmpMem), float(perMem))
   if FLAGS.executor == 'salus':
-    if not FLAGS.eval:
-      modelkey = FLAGS.model
-    else:
+    if FLAGS.eval:
       modelkey = FLAGS.model + "eval"
-    T, P = memusage[FLAGS.model, FLAGS.batch_size]
+    else:
+      modelkey = FLAGS.model
+    T, P = memusage[modelkey, FLAGS.batch_size]
     config.salus_options.resource_map.temporary['MEMORY:GPU'] = T
     config.salus_options.resource_map.persistant['MEMORY:GPU'] = P
     if 'SALUS_TOTAL_TIME' in os.environ:
