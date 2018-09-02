@@ -78,7 +78,7 @@ tf.flags.DEFINE_boolean(
 )
 tf.flags.DEFINE_boolean("eval", False, "whether use eval or benchmarking")
 tf.flags.DEFINE_float(
-    "eval_interval_secs", 0.01, "Interval between secussive eval requests, in second"
+    "eval_interval_secs", 0.1, "Interval between secussive eval requests, in second"
 )
 tf.flags.DEFINE_boolean(
     "forward_only",
