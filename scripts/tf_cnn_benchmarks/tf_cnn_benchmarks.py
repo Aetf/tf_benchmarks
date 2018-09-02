@@ -80,6 +80,9 @@ tf.flags.DEFINE_boolean("eval", False, "whether use eval or benchmarking")
 tf.flags.DEFINE_float(
     "eval_interval_secs", 0.1, "Interval between secussive eval requests, in second"
 )
+tf.flags.DEFINE_float(
+    "eval_interval_random_factor", 5, "Random factor for the interval between secussive eval requests. Use 1 to disable"
+)
 tf.flags.DEFINE_boolean(
     "forward_only",
     False,
@@ -1160,7 +1163,7 @@ class BenchmarkCNN(object):
                         )
                     )
                 if FLAGS.eval_interval_secs > 0:
-                    time.sleep(FLAGS.eval_interval_secs)
+                    time.sleep(FLAGS.eval_interval_secs * randint(1, FLAGS.eval_interval_random_factor))
             precision_at_1 = count_top_1 / total_eval_count
             recall_at_5 = count_top_5 / total_eval_count
             summary = tf.Summary()
