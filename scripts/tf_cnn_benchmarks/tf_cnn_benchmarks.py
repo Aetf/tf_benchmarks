@@ -1344,7 +1344,7 @@ class BenchmarkCNN(object):
                 store_benchmarks({"total_images_per_sec": images_per_sec})
             # Save the model checkpoint.
             if FLAGS.model_dir is not None and is_chief:
-                checkpoint_path = os.path.join(FLAGS.model_dir, "model.ckpt")
+                checkpoint_path = os.path.abspath(os.path.join(FLAGS.model_dir, "model.ckpt"))
                 if not gfile.Exists(FLAGS.model_dir):
                     gfile.MakeDirs(FLAGS.model_dir)
                 sv.saver.save(sess, checkpoint_path, global_step)
