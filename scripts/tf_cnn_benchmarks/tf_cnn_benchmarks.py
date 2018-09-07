@@ -29,6 +29,7 @@ import csv
 from datetime import datetime
 from timeit import default_timer
 from random import randint
+import concurrent.futures
 
 import numpy as np
 
@@ -1143,36 +1144,39 @@ class BenchmarkCNN(object):
             print("Model dir is " + FLAGS.model_dir)
             global_step = load_checkpoint(saver, sess, FLAGS.model_dir)
 
-            start_time = time.time()
-            count_top_1 = 0.0
-            count_top_5 = 0.0
-            total_eval_count = self.num_batches * self.batch_size
-            for step in xrange(self.num_batches):
+            def run_one_step():
+                log_time = datetime.now()
                 begin_time = time.time()
-                results = sess.run(fetches)
+                sess.run(fetches)
                 infer_time = time.time() - begin_time
-                count_top_1 += results[0]
-                count_top_5 += results[1]
-                if (step + 1) % FLAGS.display_every == 0:
-                    duration = time.time() - start_time
-                    examples_per_sec = self.batch_size * FLAGS.display_every / duration
-                    start_time = time.time()
-                    log_fn(
-                        "{}: Step {}, loss={:.2f} ({:.1f} examples/sec; {:.3f} sec/batch)".format(
-                            datetime.now(), step, 0, examples_per_sec, infer_time
-                        )
+                return log_time, infer_time
+
+            futures = []
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                for step in xrange(self.num_batches):
+                    futures.append(pool.submit(run_one_step))
+
+                    if FLAGS.eval_interval_secs > 0:
+                        factor = 1
+                        if FLAGS.eval_interval_random_factor != 1:
+                            factor = randint(1, FLAGS.eval_interval_random_factor)
+                        time.sleep(FLAGS.eval_interval_secs * factor)
+            step_train_times = []
+            for step, f in enumerate(futures):
+                log_time, infer_time = f.result()
+                step_train_times.append(infer_time)
+                examples_per_sec = self.batch_size / infer_time
+                log_fn(
+                    "{}: Step {}, loss={:.2f} ({:.1f} examples/sec; {:.3f} sec/batch)".format(
+                        log_time, step, 0, examples_per_sec, infer_time
                     )
-                if FLAGS.eval_interval_secs > 0:
-                    time.sleep(FLAGS.eval_interval_secs * randint(1, FLAGS.eval_interval_random_factor))
-            precision_at_1 = count_top_1 / total_eval_count
-            recall_at_5 = count_top_5 / total_eval_count
-            summary = tf.Summary()
-            summary.value.add(tag="eval/Accuracy@1", simple_value=precision_at_1)
-            summary.value.add(tag="eval/Recall@5", simple_value=recall_at_5)
-            summary_writer.add_summary(summary, global_step)
+                )
+            log_fn("Average: {:.3f} sec/batch".format(np.mean(step_train_times)))
+            log_fn("First iteration: {:.3f} sec/batch".format(step_train_times[0]))
             log_fn(
-                "Precision @ 1 = %.4f recall @ 5 = %.4f [%d examples]"
-                % (precision_at_1, recall_at_5, total_eval_count)
+                "Average excluding first iteration: {:.3f} sec/batch".format(
+                    np.mean(step_train_times[1:])
+                )
             )
 
     def _benchmark_cnn(self):
