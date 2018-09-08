@@ -78,6 +78,7 @@ tf.flags.DEFINE_boolean(
     "rand_delay", False, "whether delay random time between iterations"
 )
 tf.flags.DEFINE_boolean("eval", False, "whether use eval or benchmarking")
+tf.flags.DEFINE_boolean("eval_block", True, "whether eval should block wait for each request")
 tf.flags.DEFINE_float(
     "eval_interval_secs", 0.1, "Interval between secussive eval requests, in second"
 )
@@ -1152,7 +1153,8 @@ class BenchmarkCNN(object):
                 return log_time, infer_time
 
             futures = []
-            with concurrent.futures.ThreadPoolExecutor() as pool:
+            threads = 1 if FLAGS.eval_block else None
+            with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as pool:
                 for step in xrange(self.num_batches):
                     futures.append(pool.submit(run_one_step))
 
