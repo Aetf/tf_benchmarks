@@ -813,6 +813,10 @@ def create_config_proto():
             modelkey = FLAGS.model
         if (modelkey, FLAGS.batch_size) in memusage:
             T, P = memusage[modelkey, FLAGS.batch_size]
+            for i in FLAGS.num_gpus:
+                config.salus_options.resource_map.temporary["MEMORY:GPU{}".format(i)] = T
+                config.salus_options.resource_map.persistant["MEMORY:GPU{}".format(i)] = P
+            # legacy salus support
             config.salus_options.resource_map.temporary["MEMORY:GPU"] = T
             config.salus_options.resource_map.persistant["MEMORY:GPU"] = P
         else:
