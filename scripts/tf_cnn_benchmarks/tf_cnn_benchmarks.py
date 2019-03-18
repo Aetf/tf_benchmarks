@@ -952,6 +952,7 @@ class BenchmarkCNN(object):
             if (FLAGS.num_warmup_batches)
             else max(10, min_autotune_warmup)
         )
+        self.num_warmup_batches = 0
         self.graph_file = FLAGS.graph_file
         self.resize_method = FLAGS.resize_method
         self.sync_queue_counter = 0
