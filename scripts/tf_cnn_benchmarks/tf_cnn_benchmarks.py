@@ -291,6 +291,7 @@ tf.flags.DEFINE_integer(
 )
 tf.flags.DEFINE_string("train_dir", None, """Path to session logs.""")
 tf.flags.DEFINE_string("model_dir", None, """Path to session checkpoints.""")
+tf.flags.DEFINE_string("saved_model_dir", None, """Path to saved model for load in serving services""")
 tf.flags.DEFINE_string(
     "eval_dir",
     "/tmp/tf_cnn_benchmarks/eval",
@@ -760,6 +761,14 @@ def add_image_preprocessing(
     else:
         nclass = 1001
         input_shape = [batch_size, image_size, image_size, input_nchan]
+        if FLAGS.saved_model_dir is not None:
+            assert num_compute_devices == 1
+            # set batch size to None
+            input_shape[0] = None
+            images = tf.placeholder(shape=input_shape, name='images')
+            labels = tf.placeholder(shape=[None], name='labels')
+            return nclass, [images], [labels]
+
         images = tf.truncated_normal(
             input_shape, dtype=input_data_type, stddev=1e-1, name="synthetic_images"
         )
@@ -1129,18 +1138,23 @@ class BenchmarkCNN(object):
 
     def _eval_cnn(self):
         """Evaluate the model from a checkpoint using validation dataset."""
-        (enqueue_ops, fetches) = self._build_model()
-        salus_marker = tf.no_op(name="salus_main_iter")
-        fetches.append(salus_marker)
+        if FLAGS.saved_model_dir is not None:
+            (enqueue_ops, fetches, input_images, _) = self._build_model()
+        else:
+            (enqueue_ops, fetches) = self._build_model()
+        # add salus marker
+        fetches = list(fetches)
+        fetches[0] = tf.identity(fetches[0], name="salus_main_iter")
+
         saver = tf.train.Saver(tf.global_variables())
-        summary_writer = tf.summary.FileWriter(FLAGS.eval_dir, tf.get_default_graph())
         if FLAGS.executor == "salus":
             target = "zrpc://tcp://localhost:5501"
         elif FLAGS.executor == "tfdist":
             target = "grpc://127.0.0.1:2345"
         else:
             target = ""
-        with tf.Session(target=target, config=create_config_proto()) as sess:
+        config = create_config_proto()
+        with tf.Session(target=target, config=config) as sess:
             for i in xrange(len(enqueue_ops)):
                 sess.run(enqueue_ops[: (i + 1)])
             if FLAGS.model_dir is None:
@@ -1148,7 +1162,26 @@ class BenchmarkCNN(object):
             local_var_init_op = tf.local_variables_initializer()
             sess.run(local_var_init_op)
             print("Model dir is " + FLAGS.model_dir)
-            global_step = load_checkpoint(saver, sess, FLAGS.model_dir)
+            load_checkpoint(saver, sess, FLAGS.model_dir)
+
+            if FLAGS.saved_model_dir is not None:
+                all_top_1_op = fetches[0]
+                saved_builder = tf.saved_model.builder.SavedModelBuilder(FLAGS.saved_model_dir)
+                output_signature = tf.saved_model.signature_def_utils.build_signature_def(
+                    inputs={'image': tf.saved_model.utils.build_tensor_info(input_images)},
+                    outputs={'output': tf.saved_model.utils.build_tensor_info(all_top_1_op)},
+                    method_name="output"
+                )
+                saved_builder.add_meta_graph_and_variables(sess, [tf.saved_model.tag_constants.SERVING],
+                                                           signature_def_map={
+                                                               'output': output_signature
+                                                           })
+                saved_model = saved_builder._saved_model
+                saved_model.meta_graphs[0].meta_info_def.any_info.Pack(config)
+
+                saved_builder.save()
+                log_fn("Saved model to " + FLAGS.saved_model_dir)
+                return
 
             def run_one_step():
                 log_time = datetime.now()
@@ -1464,7 +1497,10 @@ class BenchmarkCNN(object):
                 all_top_1_ops = tf.reduce_sum(all_top_1_ops)
                 all_top_5_ops = tf.reduce_sum(all_top_5_ops)
                 fetches = [all_top_1_ops, all_top_5_ops] + enqueue_ops
-            return (enqueue_ops, fetches)
+            if FLAGS.saved_model_dir is not None:
+                return (enqueue_ops, fetches, images_splits, labels_splits)
+            else:
+                return (enqueue_ops, fetches)
         extra_nccl_ops = []
         apply_gradient_devices, gradient_state = self.variable_mgr.preprocess_device_grads(
             device_grads
