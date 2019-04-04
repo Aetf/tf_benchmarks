@@ -764,9 +764,9 @@ def add_image_preprocessing(
         if FLAGS.saved_model_dir is not None and FLAGS.eval:
             assert num_compute_devices == 1
             # set batch size to None
-            input_shape[0] = None
+            input_shape[0] = 1
             images = tf.placeholder(dtype=input_data_type, shape=input_shape, name='images')
-            labels = tf.placeholder(dtype=tf.int32, shape=[None], name='labels')
+            labels = tf.placeholder(dtype=tf.int32, shape=[1], name='labels')
             return nclass, [images], [labels]
 
         images = tf.truncated_normal(
