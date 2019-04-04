@@ -1612,16 +1612,19 @@ class BenchmarkCNN(object):
                 images = tf.reshape(images, shape=images_shape)
                 gpu_compute_stage_ops.append(gpu_compute_stage_op)
             else:
-                # Minor hack to avoid H2D copy when using synthetic data
-                images = tf.truncated_normal(
-                    host_images.get_shape(),
-                    dtype=input_data_type,
-                    stddev=1e-1,
-                    name="synthetic_images",
-                )
-                images = tf.contrib.framework.local_variable(
-                    images, name="gpu_cached_images"
-                )
+                if FLAGS.saved_model_dir is None:
+                    # Minor hack to avoid H2D copy when using synthetic data
+                    images = tf.truncated_normal(
+                        host_images.get_shape(),
+                        dtype=input_data_type,
+                        stddev=1e-1,
+                        name="synthetic_images",
+                    )
+                    images = tf.contrib.framework.local_variable(
+                        images, name="gpu_cached_images"
+                    )
+                else:
+                    images = host_images
                 labels = host_labels
 
         with tf.device(self.devices[device_num]):
