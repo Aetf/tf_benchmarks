@@ -1139,7 +1139,7 @@ class BenchmarkCNN(object):
     def _eval_cnn(self):
         """Evaluate the model from a checkpoint using validation dataset."""
         if FLAGS.saved_model_dir is not None:
-            (enqueue_ops, fetches, input_images, _) = self._build_model()
+            (enqueue_ops, fetches, input_image, _) = self._build_model()
         else:
             (enqueue_ops, fetches) = self._build_model()
         # add salus marker
@@ -1168,7 +1168,7 @@ class BenchmarkCNN(object):
                 all_top_1_op = fetches[0]
                 saved_builder = tf.saved_model.builder.SavedModelBuilder(FLAGS.saved_model_dir)
                 output_signature = tf.saved_model.signature_def_utils.build_signature_def(
-                    inputs={'image': tf.saved_model.utils.build_tensor_info(input_images)},
+                    inputs={'image': tf.saved_model.utils.build_tensor_info(input_image)},
                     outputs={'output': tf.saved_model.utils.build_tensor_info(all_top_1_op)},
                     method_name="output"
                 )
@@ -1498,7 +1498,7 @@ class BenchmarkCNN(object):
                 all_top_5_ops = tf.reduce_sum(all_top_5_ops)
                 fetches = [all_top_1_ops, all_top_5_ops] + enqueue_ops
             if FLAGS.saved_model_dir is not None:
-                return (enqueue_ops, fetches, images_splits, labels_splits)
+                return (enqueue_ops, fetches, images_splits[0], labels_splits[0])
             else:
                 return (enqueue_ops, fetches)
         extra_nccl_ops = []
