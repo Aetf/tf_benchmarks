@@ -802,7 +802,7 @@ def create_config_proto():
     config.inter_op_parallelism_threads = FLAGS.num_inter_threads
     # config.gpu_options.force_gpu_compatible = FLAGS.force_gpu_compatible
     memusage = {}
-    if FLAGS.executor == "salus" or FLAGS.min_mem:
+    if FLAGS.executor == "salus" or FLAGS.min_mem or FLAGS.saved_model_dir is not None:
         MB = 1024 * 1024
         if FLAGS.mem_csv:
             with open(FLAGS.mem_csv) as f:
@@ -815,7 +815,7 @@ def create_config_proto():
                     perMem = float(row["Persistent Mem (MB)"]) * MB
                     bs = int(bs)
                     memusage[model, bs] = (float(tmpMem), float(perMem))
-    if FLAGS.executor == "salus":
+    if FLAGS.executor == "salus" or FLAGS.saved_model_dir is not None:
         if FLAGS.eval:
             modelkey = FLAGS.model + "eval"
         else:
