@@ -761,7 +761,7 @@ def add_image_preprocessing(
     else:
         nclass = 1001
         input_shape = [batch_size, image_size, image_size, input_nchan]
-        if FLAGS.saved_model_dir is not None:
+        if FLAGS.saved_model_dir is not None and FLAGS.eval:
             assert num_compute_devices == 1
             # set batch size to None
             input_shape[0] = None
