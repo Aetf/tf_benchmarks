@@ -763,10 +763,11 @@ def add_image_preprocessing(
         input_shape = [batch_size, image_size, image_size, input_nchan]
         if FLAGS.saved_model_dir is not None and FLAGS.eval:
             assert num_compute_devices == 1
-            # set batch size to None
+            # TODO: set batch size to None, but it seems conv layer doesn't support this
             input_shape[0] = 1
             images = tf.placeholder(dtype=input_data_type, shape=input_shape, name='images')
-            return nclass, [images]
+            # set labels to None
+            return nclass, [images], [None]
 
         images = tf.truncated_normal(
             input_shape, dtype=input_data_type, stddev=1e-1, name="synthetic_images"
@@ -1164,11 +1165,15 @@ class BenchmarkCNN(object):
             load_checkpoint(saver, sess, FLAGS.model_dir)
 
             if FLAGS.saved_model_dir is not None:
-                all_top_1_op = fetches[0]
+                top_5_prob = fetches[0]
+                top_5_indices = fetches[1]
                 saved_builder = tf.saved_model.builder.SavedModelBuilder(FLAGS.saved_model_dir)
                 output_signature = tf.saved_model.signature_def_utils.build_signature_def(
                     inputs={'image': tf.saved_model.utils.build_tensor_info(input_image)},
-                    outputs={'output': tf.saved_model.utils.build_tensor_info(all_top_1_op)},
+                    outputs={
+                        'prob': tf.saved_model.utils.build_tensor_info(top_5_prob),
+                        'indices': tf.saved_model.utils.build_tensor_info(top_5_indices)
+                    },
                     method_name="output"
                 )
                 saved_builder.add_meta_graph_and_variables(sess, [tf.saved_model.tag_constants.SERVING],
@@ -1493,13 +1498,14 @@ class BenchmarkCNN(object):
                 all_logits = tf.concat(all_logits, 0)
                 fetches = [all_logits] + enqueue_ops
             else:
-                all_top_1_ops = tf.reduce_sum(all_top_1_ops)
-                all_top_5_ops = tf.reduce_sum(all_top_5_ops)
-                fetches = [all_top_1_ops, all_top_5_ops] + enqueue_ops
-            if FLAGS.saved_model_dir is not None:
-                return (enqueue_ops, fetches, images_splits[0], labels_splits[0])
-            else:
-                return (enqueue_ops, fetches)
+                if FLAGS.saved_model_dir is not None:
+                    fetches = [all_top_1_ops[0], all_top_5_ops[0]] + enqueue_ops
+                    return (enqueue_ops, fetches, images_splits[0])
+                else:
+                    all_top_1_ops = tf.reduce_sum(all_top_1_ops)
+                    all_top_5_ops = tf.reduce_sum(all_top_5_ops)
+                    fetches = [all_top_1_ops, all_top_5_ops] + enqueue_ops
+                    return (enqueue_ops, fetches)
         extra_nccl_ops = []
         apply_gradient_devices, gradient_state = self.variable_mgr.preprocess_device_grads(
             device_grads
@@ -1643,7 +1649,7 @@ class BenchmarkCNN(object):
             self.model_conf.add_inference(network)
             # Add the final fully-connected class layer
             logits = network.affine(nclass, activation="linear")
-            if not phase_train:
+            if not phase_train and FLAGS.saved_model_dir is None:
                 top_1_op = tf.reduce_sum(
                     tf.cast(tf.nn.in_top_k(logits, labels, 1), data_type)
                 )
@@ -1651,6 +1657,10 @@ class BenchmarkCNN(object):
                     tf.cast(tf.nn.in_top_k(logits, labels, 5), data_type)
                 )
                 return (logits, top_1_op, top_5_op)
+            elif not phase_train:
+                pred, indices = tf.nn.top_k(tf.nn.softmax(logits, name="Probabilites"), k=5)
+                return (logits, pred, indices)
+
             loss = loss_function(logits, labels)
             params = self.variable_mgr.trainable_variables_on_device(device_num)
             l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in params])
