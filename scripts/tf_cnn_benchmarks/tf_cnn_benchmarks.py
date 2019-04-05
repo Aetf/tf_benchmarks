@@ -766,8 +766,7 @@ def add_image_preprocessing(
             # set batch size to None
             input_shape[0] = 1
             images = tf.placeholder(dtype=input_data_type, shape=input_shape, name='images')
-            labels = tf.placeholder(dtype=tf.int32, shape=[1], name='labels')
-            return nclass, [images], [labels]
+            return nclass, [images]
 
         images = tf.truncated_normal(
             input_shape, dtype=input_data_type, stddev=1e-1, name="synthetic_images"
@@ -1139,7 +1138,7 @@ class BenchmarkCNN(object):
     def _eval_cnn(self):
         """Evaluate the model from a checkpoint using validation dataset."""
         if FLAGS.saved_model_dir is not None:
-            (enqueue_ops, fetches, input_image, _) = self._build_model()
+            (enqueue_ops, fetches, input_image) = self._build_model()
         else:
             (enqueue_ops, fetches) = self._build_model()
         # add salus marker
