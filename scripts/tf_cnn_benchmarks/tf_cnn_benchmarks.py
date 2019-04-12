@@ -98,6 +98,11 @@ tf.flags.DEFINE_integer(
     "number of batches to run, excluding warmup",
 )
 tf.flags.DEFINE_integer(
+    "num_seconds",
+    None,
+    "number of seconds to run, excluding warmup. Will run as many iterations as needed."
+)
+tf.flags.DEFINE_integer(
     "num_warmup_batches", None, "number of batches to run before timing"
 )
 tf.flags.DEFINE_integer(
@@ -308,6 +313,14 @@ tf.flags.DEFINE_string(
                        'cbuild_benchmark_datastore' means results will be stored
                        in cbuild datastore (note: this option requires special
                        pemissions and meant to be used from cbuilds).""",
+)
+tf.flags.DEFINE_string(
+    'wait_for_signal',
+    None,
+    """Wait for available read signal from a pipe before proceed to actual loop, after the initialization.
+    The pipe will be writen one byte to signal the program is ready to proceed. And another byte is blocking
+    read before the program proceed.
+    """
 )
 FLAGS = tf.flags.FLAGS
 
@@ -941,6 +954,17 @@ def load_checkpoint(saver, sess, ckpt_dir):
         raise RuntimeError("No checkpoint file found.")
 
 
+def wait_for_signal():
+    if FLAGS.wait_for_signal is None:
+        return
+
+    with open(FLAGS.wait_for_signal, 'wb') as f:
+        f.write('\x0')
+
+    with open(FLAGS.wait_for_signal, 'rb') as f:
+        f.read(1)
+
+
 class BenchmarkCNN(object):
     """Class for benchmarking a cnn network."""
 
@@ -1194,27 +1218,53 @@ class BenchmarkCNN(object):
                 infer_time = time.time() - begin_time
                 return log_time, infer_time
 
-            futures = []
-            threads = 1 if FLAGS.eval_block else None
-            with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as pool:
-                for step in xrange(self.num_batches):
-                    futures.append(pool.submit(run_one_step))
+            wait_for_signal()
+            if FLAGS.eval_block:
+                if FLAGS.num_seconds is None:
+                    for step in xrange(self.num_batches):
+                        log_time, infer_time = run_one_step()
+                        step_train_times.append(infer_time)
+                        examples_per_sec = self.batch_size / infer_time
+                        log_fn(
+                            "{}: Step {}, loss={:.2f} ({:.1f} examples/sec; {:.3f} sec/batch)".format(
+                                log_time, step, 0, examples_per_sec, infer_time
+                            )
+                        )
+                else:
+                    step = 0
+                    whole_begin_time = time.time()
+                    while time.time() - whole_begin_time <= FLAGS.num_seconds:
+                        log_time, infer_time = run_one_step()
+                        step_train_times.append(infer_time)
+                        examples_per_sec = self.batch_size / infer_time
+                        log_fn(
+                            "{}: Step {}, loss={:.2f} ({:.1f} examples/sec; {:.3f} sec/batch)".format(
+                                log_time, step, 0, examples_per_sec, infer_time
+                            )
+                        step += 1
+            else:
+                if FLAGS.num_seconds is not None:
+                    raise ValueError('num_seconds not supported when eval_block=false')
+                futures = []
+                with concurrent.futures.ThreadPoolExecutor(max_workers=None) as pool:
+                    for step in xrange(self.num_batches):
+                        futures.append(pool.submit(run_one_step))
 
-                    if FLAGS.eval_interval_secs > 0:
-                        factor = 1
-                        if FLAGS.eval_interval_random_factor != 1:
-                            factor = randint(1, FLAGS.eval_interval_random_factor)
-                        time.sleep(FLAGS.eval_interval_secs * factor)
-            step_train_times = []
-            for step, f in enumerate(futures):
-                log_time, infer_time = f.result()
-                step_train_times.append(infer_time)
-                examples_per_sec = self.batch_size / infer_time
-                log_fn(
-                    "{}: Step {}, loss={:.2f} ({:.1f} examples/sec; {:.3f} sec/batch)".format(
-                        log_time, step, 0, examples_per_sec, infer_time
+                        if FLAGS.eval_interval_secs > 0:
+                            factor = 1
+                            if FLAGS.eval_interval_random_factor != 1:
+                                factor = randint(1, FLAGS.eval_interval_random_factor)
+                            time.sleep(FLAGS.eval_interval_secs * factor)
+                step_train_times = []
+                for step, f in enumerate(futures):
+                    log_time, infer_time = f.result()
+                    step_train_times.append(infer_time)
+                    examples_per_sec = self.batch_size / infer_time
+                    log_fn(
+                        "{}: Step {}, loss={:.2f} ({:.1f} examples/sec; {:.3f} sec/batch)".format(
+                            log_time, step, 0, examples_per_sec, infer_time
+                        )
                     )
-                )
             log_fn("Average: {:.3f} sec/batch".format(np.mean(step_train_times)))
             log_fn("First iteration: {:.3f} sec/batch".format(step_train_times[0]))
             log_fn(
@@ -1329,12 +1379,17 @@ class BenchmarkCNN(object):
             log_fn("Running warm up")
             local_step = -1 * self.num_warmup_batches
 
+            wait_for_signal()
             if FLAGS.cross_replica_sync and FLAGS.job_name:
                 # In cross-replica sync mode, all workers must run the same number of
                 # local steps, or else the workers running the extra step will block.
                 done_fn = lambda: local_step == self.num_batches
             elif FLAGS.executor == "salus":
-                done_fn = lambda: local_step == self.num_batches
+                if FLAGS.num_seconds is None:
+                    done_fn = lambda: local_step == self.num_batches
+                else:
+                    whole_begin_time = time.time()
+                    done_fn = lambda: time.time() - whole_begin_time > FLAGS.num_seconds
             else:
                 done_fn = lambda: global_step_watcher.done()
             while not done_fn():
