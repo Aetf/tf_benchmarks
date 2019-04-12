@@ -1241,6 +1241,7 @@ class BenchmarkCNN(object):
                             "{}: Step {}, loss={:.2f} ({:.1f} examples/sec; {:.3f} sec/batch)".format(
                                 log_time, step, 0, examples_per_sec, infer_time
                             )
+                        )
                         step += 1
             else:
                 if FLAGS.num_seconds is not None:
