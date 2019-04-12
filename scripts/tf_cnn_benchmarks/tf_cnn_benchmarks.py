@@ -959,7 +959,7 @@ def wait_for_signal():
         return
 
     with open(FLAGS.wait_for_signal, 'wb') as f:
-        f.write('\x0')
+        f.write(b'a')
 
     with open(FLAGS.wait_for_signal, 'rb') as f:
         f.read(1)
