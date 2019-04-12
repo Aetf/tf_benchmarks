@@ -1218,6 +1218,7 @@ class BenchmarkCNN(object):
                 infer_time = time.time() - begin_time
                 return log_time, infer_time
 
+            step_train_times = []
             wait_for_signal()
             if FLAGS.eval_block:
                 if FLAGS.num_seconds is None:
@@ -1256,7 +1257,6 @@ class BenchmarkCNN(object):
                             if FLAGS.eval_interval_random_factor != 1:
                                 factor = randint(1, FLAGS.eval_interval_random_factor)
                             time.sleep(FLAGS.eval_interval_secs * factor)
-                step_train_times = []
                 for step, f in enumerate(futures):
                     log_time, infer_time = f.result()
                     step_train_times.append(infer_time)
