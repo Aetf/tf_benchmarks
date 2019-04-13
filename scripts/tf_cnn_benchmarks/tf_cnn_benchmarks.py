@@ -850,6 +850,8 @@ def create_config_proto():
         if "SALUS_TOTAL_TIME" in os.environ:
             totalTime = int(os.environ["SALUS_TOTAL_TIME"])
             config.salus_options.resource_map.persistant["TIME:TOTAL"] = totalTime
+        if FLAGS.eval:
+            config.salus_options.resource_map.persistant["SCHED:PRIORITY"] = 10
     if FLAGS.min_mem:
         total = 14 * (1024 ** 3)
         fraction = (T + P) // total + 0.05
