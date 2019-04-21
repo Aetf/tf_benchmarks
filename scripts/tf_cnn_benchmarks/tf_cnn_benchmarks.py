@@ -855,9 +855,10 @@ def create_config_proto():
             config.salus_options.resource_map.persistant["SCHED:PRIORITY"] = 10
     if FLAGS.min_mem:
         total = 14 * (1024 ** 3)
-        fraction = (T + P) // total + 0.05
+        fraction = (T + P) // total + 0.1
         if fraction < 1.0:
             config.gpu_options.per_process_gpu_memory_fraction = fraction
+            config.gpu_options.allow_growth = True
     return config
 
 
