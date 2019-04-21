@@ -1390,13 +1390,12 @@ class BenchmarkCNN(object):
                 # local steps, or else the workers running the extra step will block.
                 done_fn = lambda: local_step == self.num_batches
             elif FLAGS.executor == "salus":
-                if FLAGS.num_seconds is None:
-                    done_fn = lambda: local_step == self.num_batches
-                else:
-                    whole_begin_time = time.time()
-                    done_fn = lambda: time.time() - whole_begin_time > FLAGS.num_seconds
+                done_fn = lambda: local_step == self.num_batches
             else:
                 done_fn = lambda: global_step_watcher.done()
+            if FLAGS.num_seconds is not None:
+                whole_begin_time = time.time()
+                done_fn = lambda: time.time() - whole_begin_time > FLAGS.num_seconds
             while not done_fn():
                 if local_step == 0:
                     log_fn("Done warm up")
