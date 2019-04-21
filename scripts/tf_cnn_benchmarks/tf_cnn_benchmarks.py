@@ -828,25 +828,26 @@ def create_config_proto():
                     perMem = float(row["Persistent Mem (MB)"]) * MB
                     bs = int(bs)
                     memusage[model, bs] = (float(tmpMem), float(perMem))
-    if FLAGS.executor == "salus" or FLAGS.saved_model_dir is not None:
         if FLAGS.eval:
             modelkey = FLAGS.model + "eval"
         else:
             modelkey = FLAGS.model
         if (modelkey, FLAGS.batch_size) in memusage:
             T, P = memusage[modelkey, FLAGS.batch_size]
-            for i in range(FLAGS.num_gpus):
-                config.salus_options.resource_map.temporary["MEMORY:GPU{}".format(i)] = T
-                config.salus_options.resource_map.persistant["MEMORY:GPU{}".format(i)] = P
-            # legacy salus support
-            config.salus_options.resource_map.temporary["MEMORY:GPU"] = T
-            config.salus_options.resource_map.persistant["MEMORY:GPU"] = P
         else:
             log_fn(
                 "WARNING: no memory info available for {}_{}".format(
                     modelkey, FLAGS.batch_size
                 )
             )
+    if FLAGS.executor == "salus" or FLAGS.saved_model_dir is not None:
+        if (modelkey, FLAGS.batch_size) in memusage:
+            for i in range(FLAGS.num_gpus):
+                config.salus_options.resource_map.temporary["MEMORY:GPU{}".format(i)] = T
+                config.salus_options.resource_map.persistant["MEMORY:GPU{}".format(i)] = P
+            # legacy salus support
+            config.salus_options.resource_map.temporary["MEMORY:GPU"] = T
+            config.salus_options.resource_map.persistant["MEMORY:GPU"] = P
         if "SALUS_TOTAL_TIME" in os.environ:
             totalTime = int(os.environ["SALUS_TOTAL_TIME"])
             config.salus_options.resource_map.persistant["TIME:TOTAL"] = totalTime
