@@ -857,8 +857,9 @@ def create_config_proto():
         total = 14 * (1024 ** 3)
         fraction = (T + P) // total + 0.1
         if fraction < 1.0:
-            config.gpu_options.per_process_gpu_memory_fraction = fraction
-            config.gpu_options.allow_growth = True
+            #config.gpu_options.per_process_gpu_memory_fraction = fraction
+            pass
+        config.gpu_options.allow_growth = True
     return config
 
 
