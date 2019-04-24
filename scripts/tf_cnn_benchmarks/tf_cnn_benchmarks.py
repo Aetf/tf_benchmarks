@@ -83,7 +83,7 @@ tf.flags.DEFINE_float(
     "eval_interval_secs", 0.1, "Interval between secussive eval requests, in second"
 )
 tf.flags.DEFINE_float(
-    "eval_interval_random_factor", 5, "Random factor for the interval between secussive eval requests. Use 1 to disable"
+    "eval_interval_random_factor", None, "Random factor for the interval between secussive eval requests."
 )
 tf.flags.DEFINE_boolean(
     "forward_only",
@@ -1236,6 +1236,11 @@ class BenchmarkCNN(object):
                                 log_time, step, 0, examples_per_sec, infer_time
                             )
                         )
+                        if FLAGS.eval_interval_secs > 0:
+                            factor = 1
+                            if FLAGS.eval_interval_random_factor is not None:
+                                factor = randint(1, FLAGS.eval_interval_random_factor)
+                            time.sleep(FLAGS.eval_interval_secs * factor)
                 else:
                     step = 0
                     whole_begin_time = time.time()
@@ -1249,6 +1254,11 @@ class BenchmarkCNN(object):
                             )
                         )
                         step += 1
+                        if FLAGS.eval_interval_secs > 0:
+                            factor = 1
+                            if FLAGS.eval_interval_random_factor is not None:
+                                factor = randint(1, FLAGS.eval_interval_random_factor)
+                            time.sleep(FLAGS.eval_interval_secs * factor)
             else:
                 if FLAGS.num_seconds is not None:
                     raise ValueError('num_seconds not supported when eval_block=false')
@@ -1259,7 +1269,7 @@ class BenchmarkCNN(object):
 
                         if FLAGS.eval_interval_secs > 0:
                             factor = 1
-                            if FLAGS.eval_interval_random_factor != 1:
+                            if FLAGS.eval_interval_random_factor is not None:
                                 factor = randint(1, FLAGS.eval_interval_random_factor)
                             time.sleep(FLAGS.eval_interval_secs * factor)
                 for step, f in enumerate(futures):
