@@ -322,6 +322,11 @@ tf.flags.DEFINE_string(
     read before the program proceed.
     """
 )
+tf.flags.DEFINE_integer(
+    "eval_sched_priority",
+    10,
+    """Scheduling priroity of eval job"""
+)
 FLAGS = tf.flags.FLAGS
 
 log_fn = print  # tf.logging.info
@@ -852,7 +857,7 @@ def create_config_proto():
             totalTime = int(os.environ["SALUS_TOTAL_TIME"])
             config.salus_options.resource_map.persistant["TIME:TOTAL"] = totalTime
         if FLAGS.eval:
-            config.salus_options.resource_map.persistant["SCHED:PRIORITY"] = 10
+            config.salus_options.resource_map.persistant["SCHED:PRIORITY"] = FLAGS.eval_sched_priority
     if FLAGS.min_mem:
         total = 14 * (1024 ** 3)
         fraction = (T + P) // total + 0.1
