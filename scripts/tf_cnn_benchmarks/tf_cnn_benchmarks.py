@@ -70,6 +70,7 @@ tf.flags.DEFINE_string("model", "trivial", "name of the model to run")
 #   the forward-only option, which will only compute the loss function.
 #   forward-only cannot be enabled with eval at the same time.
 tf.flags.DEFINE_string("executor", "salus", "whether use Salus executor or vanilla TF")
+tf.flags.DEFINE_string("sess_target", None, "Override sess target")
 tf.flags.DEFINE_boolean(
     "min_mem", False, "whether to restrict TF mem usage absed on profiling data"
 )
@@ -1181,7 +1182,9 @@ class BenchmarkCNN(object):
         fetches[0] = tf.identity(fetches[0], name="salus_main_iter")
 
         saver = tf.train.Saver(tf.global_variables())
-        if FLAGS.executor == "salus":
+        if FLAGS.sess_target:
+            target = FLAGS.sess_target
+        elif FLAGS.executor == "salus":
             target = "zrpc://tcp://localhost:5501"
         elif FLAGS.executor == "tfdist":
             target = "grpc://127.0.0.1:2345"
@@ -1354,7 +1357,9 @@ class BenchmarkCNN(object):
             summary_writer=summary_writer,
         )
 
-        if FLAGS.executor == "salus":
+        if FLAGS.sess_target:
+            target = FLAGS.sess_target
+        elif FLAGS.executor == "salus":
             master_target = "zrpc://tcp://localhost:5501"
         elif FLAGS.executor == "tfdist":
             master_target = "grpc://127.0.0.1:2345"
