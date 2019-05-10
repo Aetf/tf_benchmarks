@@ -30,6 +30,7 @@ from datetime import datetime
 from timeit import default_timer
 from random import randint
 import concurrent.futures
+import struct
 
 import numpy as np
 
@@ -79,7 +80,6 @@ tf.flags.DEFINE_boolean(
     "rand_delay", False, "whether delay random time between iterations"
 )
 tf.flags.DEFINE_boolean("eval", False, "whether use eval or benchmarking")
-tf.flags.DEFINE_boolean("eval_block", True, "whether eval should block wait for each request")
 tf.flags.DEFINE_float(
     "eval_interval_secs", 0.1, "Interval between secussive eval requests, in second"
 )
@@ -321,6 +321,13 @@ tf.flags.DEFINE_string(
     """Wait for available read signal from a pipe before proceed to actual loop, after the initialization.
     The pipe will be writen one byte to signal the program is ready to proceed. And another byte is blocking
     read before the program proceed.
+    """
+)
+tf.flags.DEFINE_string(
+    'control_pipe',
+    None,
+    """
+    A control pipe to set eval execution rate
     """
 )
 tf.flags.DEFINE_integer(
@@ -882,7 +889,7 @@ def get_mode_from_flags():
 
 
 def benchmark_one_step(
-    sess, fetches, step, batch_size, step_train_times, trace_filename, summary_op=None
+    sess, fetches, step, batch_size, trace_filename, summary_op=None
 ):
     """Advance one step of benchmarking."""
     if trace_filename is not None and step == -1:
@@ -906,7 +913,6 @@ def benchmark_one_step(
         lossval = 0.
 
     train_time = time.time() - start_time
-    step_train_times.append(train_time)
     if step >= 0 and (step == 0 or (step + 1) % FLAGS.display_every == 0):
         log_fn(
             "{}: Step {}, loss={:.2f} ({:.1f} examples/sec; {:.3f} sec/batch)".format(
@@ -918,24 +924,7 @@ def benchmark_one_step(
         trace = timeline.Timeline(step_stats=run_metadata.step_stats)
         with open(trace_filename, "w") as trace_file:
             trace_file.write(trace.generate_chrome_trace_format(show_memory=True))
-    return summary_str
-
-
-def get_perf_timing_str(batch_size, step_train_times, scale=1):
-    times = np.array(step_train_times)
-    speeds = batch_size / times
-    speed_mean = scale * batch_size / np.mean(times)
-    if scale == 1:
-        speed_uncertainty = np.std(speeds) / np.sqrt(float(len(speeds)))
-        speed_madstd = 1.4826 * np.median(np.abs(speeds - np.median(speeds)))
-        speed_jitter = speed_madstd
-        return "images/sec: %.1f +/- %.1f (jitter = %.1f)" % (
-            speed_mean,
-            speed_uncertainty,
-            speed_jitter,
-        )
-    else:
-        return "images/sec: %.1f" % speed_mean
+    return summary_str, train_time
 
 
 def load_checkpoint(saver, sess, ckpt_dir):
@@ -974,6 +963,111 @@ def wait_for_signal():
 
     with open(FLAGS.wait_for_signal, 'rb') as f:
         f.read(1)
+
+
+def read_nonblock(fd, max_size=1):
+    try:
+        buffer = os.read(fd, max_size)
+        if len(buffer) == 0:
+            buffer = None
+    except BlockingIOError as err:
+        buffer = None
+    return buffer
+
+
+class StatsState(object):
+    def __init__(self):
+        self.first_infer_time = None
+        self.avg_infer = 0.0
+        self.avg_infer_no_first = 0.0
+
+        self.control_pipe_fd_in = None
+
+        self.is_done = False
+
+        self.window_size = 100
+        self.moving_latency = []
+
+    def initialize(self):
+        if FLAGS.control_pipe is not None:
+            self.control_pipe_fd_in = os.open(FLAGS.control_pipe + '.in', os.O_RDONLY | os.O_NONBLOCK)
+
+    def done(self):
+        return self.is_done
+
+    def update_avg(self, step, infer_time):
+        # use Welford's method to maintain mean
+        # M1 = x1
+        # Mk = Mk-1 + (xk - Mk-1) / k
+        if step == 0:
+            self.first_infer_time = infer_time
+        self.avg_infer = self.avg_infer + (infer_time - self.avg_infer) / (step + 1)
+        if step >= 1:
+            self.avg_infer_no_first = self.avg_infer_no_first + (infer_time - self.avg_infer_no_first) / step
+
+        self.moving_latency.append(infer_time)
+        if len(self.moving_latency) > self.window_size:
+            self.moving_latency = self.moving_latency[-self.window_size:]
+
+    def set_window_size(self, size):
+        if size <= 0:
+            size = 0
+
+        if size > self.window_size:
+            self.window_size = size
+            return
+
+        if size < self.window_size:
+            self.window_size = size
+            self.moving_latency = self.moving_latency[-size:]
+
+    def handle_control_request(self):
+        if self.control_pipe_fd_in is None:
+            return
+
+        # check fd_in has anything to read
+        data = read_nonblock(self.control_pipe_fd_in)
+        if data is None:
+            return
+
+        # 1. get eval_interval_sec
+        # 2. set eval_interval_sec
+        # 3. get avg_infer_no_first
+        # 4. get avg_infer
+        # 5. kill -> is_done = True
+        # 6. get moving latency
+        # 7. set window size
+        # 8. get window size
+        resp = b''
+        if data[0] == 1:
+            resp = struct.pack('<d', FLAGS.eval_interval_sec)
+        elif data[0] == 2:
+            data = read_nonblock(self.control_pipe_fd_in, max_size=8)
+            val = struct.unpack('<d', data)
+            FLAGS.eval_interval_sec = val
+        elif data[0] == 3:
+            resp = struct.pack('<d', self.avg_infer_no_first)
+        elif data[0] == 4:
+            resp = struct.pack('<d', self.avg_infer)
+        elif data[0] == 5:
+            self.is_done = True
+        elif data[0] == 6:
+            resp = struct.pack('<d', np.mean(self.moving_latency))
+        elif data[0] == 7:
+            data = read_nonblock(self.control_pipe_fd_in, max_size=4)
+            val = struct.unpack('<i', data)
+            self.set_window_size(val)
+        elif data[0] == 8:
+            resp = struct.pack('<i', np.mean(self.window_size))
+
+        with open(FLAGS.control_pipe + '.out', 'wb') as f:
+            # write len
+            f.write([len(resp)])
+            # write resp
+            f.write(resp)
+
+
+STATE = StatsState()
 
 
 class BenchmarkCNN(object):
@@ -1173,6 +1267,8 @@ class BenchmarkCNN(object):
 
     def _eval_cnn(self):
         """Evaluate the model from a checkpoint using validation dataset."""
+        STATE.initialize()
+
         if FLAGS.saved_model_dir is not None:
             (enqueue_ops, fetches, input_image) = self._build_model()
         else:
@@ -1224,81 +1320,58 @@ class BenchmarkCNN(object):
                 log_fn("Saved model to " + FLAGS.saved_model_dir)
                 return
 
-            def run_one_step():
+            def run_one_step(step):
                 log_time = datetime.now()
                 begin_time = time.time()
                 sess.run(fetches)
                 infer_time = time.time() - begin_time
-                return log_time, infer_time
 
-            step_train_times = []
-            wait_for_signal()
-            if FLAGS.eval_block:
-                if FLAGS.num_seconds is None:
-                    for step in xrange(self.num_batches):
-                        log_time, infer_time = run_one_step()
-                        step_train_times.append(infer_time)
-                        examples_per_sec = self.batch_size / infer_time
-                        log_fn(
-                            "{}: Step {}, loss={:.2f} ({:.1f} examples/sec; {:.3f} sec/batch)".format(
-                                log_time, step, 0, examples_per_sec, infer_time
-                            )
-                        )
-                        if FLAGS.eval_interval_secs > 0:
-                            factor = 1
-                            if FLAGS.eval_interval_random_factor is not None:
-                                factor = randint(1, FLAGS.eval_interval_random_factor)
-                            time.sleep(FLAGS.eval_interval_secs * factor)
-                else:
-                    step = 0
-                    whole_begin_time = time.time()
-                    while time.time() - whole_begin_time <= FLAGS.num_seconds:
-                        log_time, infer_time = run_one_step()
-                        step_train_times.append(infer_time)
-                        examples_per_sec = self.batch_size / infer_time
-                        log_fn(
-                            "{}: Step {}, loss={:.2f} ({:.1f} examples/sec; {:.3f} sec/batch)".format(
-                                log_time, step, 0, examples_per_sec, infer_time
-                            )
-                        )
-                        step += 1
-                        if FLAGS.eval_interval_secs > 0:
-                            factor = 1
-                            if FLAGS.eval_interval_random_factor is not None:
-                                factor = randint(1, FLAGS.eval_interval_random_factor)
-                            time.sleep(FLAGS.eval_interval_secs * factor)
-            else:
-                if FLAGS.num_seconds is not None:
-                    raise ValueError('num_seconds not supported when eval_block=false')
-                futures = []
-                with concurrent.futures.ThreadPoolExecutor(max_workers=None) as pool:
-                    for step in xrange(self.num_batches):
-                        futures.append(pool.submit(run_one_step))
-
-                        if FLAGS.eval_interval_secs > 0:
-                            factor = 1
-                            if FLAGS.eval_interval_random_factor is not None:
-                                factor = randint(1, FLAGS.eval_interval_random_factor)
-                            time.sleep(FLAGS.eval_interval_secs * factor)
-                for step, f in enumerate(futures):
-                    log_time, infer_time = f.result()
-                    step_train_times.append(infer_time)
-                    examples_per_sec = self.batch_size / infer_time
-                    log_fn(
-                        "{}: Step {}, loss={:.2f} ({:.1f} examples/sec; {:.3f} sec/batch)".format(
-                            log_time, step, 0, examples_per_sec, infer_time
-                        )
+                # logging
+                examples_per_sec = self.batch_size / infer_time
+                log_fn(
+                    "{}: Step {}, loss={:.2f} ({:.1f} examples/sec; {:.3f} sec/batch)".format(
+                        log_time, step, 0, examples_per_sec, infer_time
                     )
-            log_fn("Average: {:.3f} sec/batch".format(np.mean(step_train_times)))
-            log_fn("First iteration: {:.3f} sec/batch".format(step_train_times[0]))
-            log_fn(
-                "Average excluding first iteration: {:.3f} sec/batch".format(
-                    np.mean(step_train_times[1:])
                 )
-            )
+
+                # update avg
+                STATE.update_avg(step, infer_time)
+
+                # process control request
+                STATE.handle_control_request()
+
+                # throtle
+                if FLAGS.eval_interval_secs > 0:
+                    factor = 1
+                    if FLAGS.eval_interval_random_factor is not None:
+                        factor = randint(1, FLAGS.eval_interval_random_factor)
+                    remaining = FLAGS.eval_interval_random_factor * factor - (time.time() - begin_time)
+                    if remaining > 0:
+                        time.sleep(remaining)
+                return infer_time
+
+            wait_for_signal()
+            if FLAGS.num_seconds is None:
+                for step in xrange(self.num_batches):
+                    run_one_step(step)
+            elif FLAGS.num_seconds == -1:
+                step = 0
+                while not STATE.done():
+                    run_one_step(step)
+                    step += 1
+            else:
+                step = 0
+                whole_begin_time = time.time()
+                while time.time() - whole_begin_time <= FLAGS.num_seconds:
+                    run_one_step(step)
+                    step += 1
+            log_fn("Average: {:.3f} sec/batch".format(avg_infer)
+            log_fn("First iteration: {:.3f} sec/batch".format(first_infer_time)
+            log_fn("Average excluding first iteration: {:.3f} sec/batch".format(avg_infer_no_first))
 
     def _benchmark_cnn(self):
         """Run cnn in benchmark mode. When forward_only on, it forwards CNN."""
+        STATE.initialize()
         (enqueue_ops, fetches) = self._build_model()
         main_fetch_group = tf.group(*fetches)
         execution_barrier = None
@@ -1368,7 +1441,6 @@ class BenchmarkCNN(object):
         else:
             master_target = ""
 
-        step_train_times = []
         with sv.managed_session(
             master=master_target,
             config=create_config_proto(),
@@ -1415,8 +1487,11 @@ class BenchmarkCNN(object):
             else:
                 done_fn = lambda: global_step_watcher.done()
             if FLAGS.num_seconds is not None:
-                whole_begin_time = time.time()
-                done_fn = lambda: time.time() - whole_begin_time > FLAGS.num_seconds
+                if FLAGS.num_seconds == -1:
+                    done_fn = STATE.done()
+                else:
+                    whole_begin_time = time.time()
+                    done_fn = lambda: time.time() - whole_begin_time > FLAGS.num_seconds
             while not done_fn():
                 if local_step == 0:
                     log_fn("Done warm up")
@@ -1426,8 +1501,6 @@ class BenchmarkCNN(object):
                         sess.run([execution_barrier])
 
                     log_fn("Step\tImg/sec\tloss")
-                    assert len(step_train_times) == self.num_warmup_batches
-                    step_train_times = []  # reset to ignore warm up batches
                 if (
                     summary_writer
                     and (local_step + 1) % FLAGS.save_summaries_steps == 0
@@ -1435,15 +1508,21 @@ class BenchmarkCNN(object):
                     fetch_summary = summary_op
                 else:
                     fetch_summary = None
-                summary_str = benchmark_one_step(
+                summary_str, train_time = benchmark_one_step(
                     sess,
                     fetches,
                     local_step,
                     self.batch_size,
-                    step_train_times,
                     self.trace_filename,
                     fetch_summary,
                 )
+
+                # update avg
+                STATE.update_avg(step, train_time)
+
+                # process control request
+                STATE.handle_control_request()
+
                 if summary_str is not None and is_chief:
                     sv.summary_computed(sess, summary_str)
                 local_step += 1
@@ -1460,11 +1539,11 @@ class BenchmarkCNN(object):
                     global_step_watcher.steps_per_second() * self.batch_size
                 )
                 log_fn("total images/sec: %.2f" % images_per_sec)
-            log_fn("Average: {:.3f} sec/batch".format(np.mean(step_train_times)))
-            log_fn("First iteration: {:.3f} sec/batch".format(step_train_times[0]))
+            log_fn("Average: {:.3f} sec/batch".format(STATE.avg_infer)
+            log_fn("First iteration: {:.3f} sec/batch".format(STATE.first_infer_time)
             log_fn(
                 "Average excluding first iteration: {:.3f} sec/batch".format(
-                    np.mean(step_train_times[1:])
+                    STATE.avg_infer_no_first
                 )
             )
             log_fn("-" * 64)
