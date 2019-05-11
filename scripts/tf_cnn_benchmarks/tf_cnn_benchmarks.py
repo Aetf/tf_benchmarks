@@ -1528,7 +1528,7 @@ class BenchmarkCNN(object):
                 )
 
                 # update avg
-                STATE.update_avg(step, train_time)
+                STATE.update_avg(local_step, train_time)
 
                 # process control request
                 STATE.handle_control_request()
