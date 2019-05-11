@@ -1032,6 +1032,8 @@ class StatsState(object):
         if data is None:
             return
 
+        log_fn(f'Got control request: {data[0]}')
+
         # 1. get eval_interval_secs
         # 2. set eval_interval_secs
         # 3. get avg_infer_no_first
@@ -1062,6 +1064,7 @@ class StatsState(object):
         elif data[0] == 8:
             resp = '<i', self.window_size
 
+        log_fn(f'Writing back control resp: {resp}')
         with open(FLAGS.control_pipe + '.out', 'wb') as f:
             fmt, toencode = resp
 
@@ -1077,6 +1080,7 @@ class StatsState(object):
             f.write(fmt)
             # write data
             f.write(data)
+        log_fn(f'Done handle request')
 
 
 STATE = StatsState()
