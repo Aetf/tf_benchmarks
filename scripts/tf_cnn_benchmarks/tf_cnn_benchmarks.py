@@ -1366,7 +1366,7 @@ class BenchmarkCNN(object):
                     factor = 1
                     if FLAGS.eval_interval_random_factor is not None:
                         factor = randint(1, FLAGS.eval_interval_random_factor)
-                    remaining = FLAGS.eval_interval_random_factor * factor - (time.time() - begin_time)
+                    remaining = FLAGS.eval_interval_secs * factor - (time.time() - begin_time)
                     if remaining > 0:
                         time.sleep(remaining)
                 return infer_time
