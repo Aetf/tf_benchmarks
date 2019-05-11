@@ -1047,7 +1047,7 @@ class StatsState(object):
             resp = '<d', FLAGS.eval_interval_secs
         elif data[0] == 2:
             data = read_nonblock(self.control_pipe_fd_in, max_size=8)
-            val = struct.unpack('<d', data)
+            val = struct.unpack('<d', data)[0]
             FLAGS.eval_interval_secs = val
         elif data[0] == 3:
             resp = '<d', self.avg_infer_no_first
@@ -1059,7 +1059,7 @@ class StatsState(object):
             resp = '<d', np.mean(self.moving_latency)
         elif data[0] == 7:
             data = read_nonblock(self.control_pipe_fd_in, max_size=4)
-            val = struct.unpack('<i', data)
+            val = struct.unpack('<i', data)[0]
             self.set_window_size(val)
         elif data[0] == 8:
             resp = '<i', self.window_size
