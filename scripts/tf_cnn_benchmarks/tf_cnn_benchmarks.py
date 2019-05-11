@@ -1082,6 +1082,11 @@ class StatsState(object):
             f.write(data)
         log_fn(f'Done handle request')
 
+    def print_summary(self):
+        log_fn("Average: {:.3f} sec/batch".format(self.avg_infer))
+        log_fn("First iteration: {:.3f} sec/batch".format(self.first_infer_time))
+        log_fn("Average excluding first iteration: {:.3f} sec/batch".format(self.avg_infer_no_first))
+
 
 STATE = StatsState()
 
@@ -1381,9 +1386,7 @@ class BenchmarkCNN(object):
                 while time.time() - whole_begin_time <= FLAGS.num_seconds:
                     run_one_step(step)
                     step += 1
-            log_fn("Average: {:.3f} sec/batch".format(avg_infer))
-            log_fn("First iteration: {:.3f} sec/batch".format(first_infer_time))
-            log_fn("Average excluding first iteration: {:.3f} sec/batch".format(avg_infer_no_first))
+            STATE.print_summary()
 
     def _benchmark_cnn(self):
         """Run cnn in benchmark mode. When forward_only on, it forwards CNN."""
@@ -1555,13 +1558,7 @@ class BenchmarkCNN(object):
                     global_step_watcher.steps_per_second() * self.batch_size
                 )
                 log_fn("total images/sec: %.2f" % images_per_sec)
-            log_fn("Average: {:.3f} sec/batch".format(STATE.avg_infer))
-            log_fn("First iteration: {:.3f} sec/batch".format(STATE.first_infer_time))
-            log_fn(
-                "Average excluding first iteration: {:.3f} sec/batch".format(
-                    STATE.avg_infer_no_first
-                )
-            )
+            STATE.print_summary()
             log_fn("-" * 64)
             if is_chief and FLAGS.executor != "salus":
                 store_benchmarks({"total_images_per_sec": images_per_sec})
