@@ -958,11 +958,13 @@ def wait_for_signal():
     if FLAGS.wait_for_signal is None:
         return
 
+    log_fn("Waiting for ready release signal")
     with open(FLAGS.wait_for_signal, 'wb') as f:
         f.write(b'a')
 
     with open(FLAGS.wait_for_signal, 'rb') as f:
         f.read(1)
+    log_fn("Got ready release signal")
 
 
 def read_nonblock(fd, max_size=1):
