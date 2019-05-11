@@ -1549,8 +1549,8 @@ class BenchmarkCNN(object):
                     global_step_watcher.steps_per_second() * self.batch_size
                 )
                 log_fn("total images/sec: %.2f" % images_per_sec)
-            log_fn("Average: {:.3f} sec/batch".format(STATE.avg_infer)
-            log_fn("First iteration: {:.3f} sec/batch".format(STATE.first_infer_time)
+            log_fn("Average: {:.3f} sec/batch".format(STATE.avg_infer))
+            log_fn("First iteration: {:.3f} sec/batch".format(STATE.first_infer_time))
             log_fn(
                 "Average excluding first iteration: {:.3f} sec/batch".format(
                     STATE.avg_infer_no_first
