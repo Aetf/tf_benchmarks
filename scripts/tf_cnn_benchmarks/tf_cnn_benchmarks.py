@@ -1030,41 +1030,51 @@ class StatsState(object):
         if data is None:
             return
 
-        # 1. get eval_interval_sec
-        # 2. set eval_interval_sec
+        # 1. get eval_interval_secs
+        # 2. set eval_interval_secs
         # 3. get avg_infer_no_first
         # 4. get avg_infer
         # 5. kill -> is_done = True
         # 6. get moving latency
         # 7. set window size
         # 8. get window size
-        resp = b''
+        resp = '<i', 0  # default resp
         if data[0] == 1:
-            resp = struct.pack('<d', FLAGS.eval_interval_sec)
+            resp = '<d', FLAGS.eval_interval_secs
         elif data[0] == 2:
             data = read_nonblock(self.control_pipe_fd_in, max_size=8)
             val = struct.unpack('<d', data)
-            FLAGS.eval_interval_sec = val
+            FLAGS.eval_interval_secs = val
         elif data[0] == 3:
-            resp = struct.pack('<d', self.avg_infer_no_first)
+            resp = '<d', self.avg_infer_no_first
         elif data[0] == 4:
-            resp = struct.pack('<d', self.avg_infer)
+            resp = '<d', self.avg_infer
         elif data[0] == 5:
             self.is_done = True
         elif data[0] == 6:
-            resp = struct.pack('<d', np.mean(self.moving_latency))
+            resp = '<d', np.mean(self.moving_latency)
         elif data[0] == 7:
             data = read_nonblock(self.control_pipe_fd_in, max_size=4)
             val = struct.unpack('<i', data)
             self.set_window_size(val)
         elif data[0] == 8:
-            resp = struct.pack('<i', np.mean(self.window_size))
+            resp = '<i', self.window_size
 
         with open(FLAGS.control_pipe + '.out', 'wb') as f:
-            # write len
-            f.write([len(resp)])
-            # write resp
-            f.write(resp)
+            fmt, toencode = resp
+
+            fmt = fmt.encode('ascii')
+            data = struct.pack(fmt, toencode)
+
+            # write fixed header: fmt_len as 4 bytes <i integer
+            f.write(struct.pack('<i', len(fmt)))
+            # data_len can be calc using fmt.
+            # write fixed header: data_len as 4 bytes <i integer
+            # f.write(struct.pack('<i', len(data)))
+            # write fmt
+            f.write(fmt)
+            # write data
+            f.write(data)
 
 
 STATE = StatsState()
