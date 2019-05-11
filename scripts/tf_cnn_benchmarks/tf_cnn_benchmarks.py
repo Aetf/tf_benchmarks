@@ -1443,7 +1443,7 @@ class BenchmarkCNN(object):
         )
 
         if FLAGS.sess_target:
-            target = FLAGS.sess_target
+            master_target = FLAGS.sess_target
         elif FLAGS.executor == "salus":
             master_target = "zrpc://tcp://localhost:5501"
         elif FLAGS.executor == "tfdist":
