@@ -1375,8 +1375,8 @@ class BenchmarkCNN(object):
                 while time.time() - whole_begin_time <= FLAGS.num_seconds:
                     run_one_step(step)
                     step += 1
-            log_fn("Average: {:.3f} sec/batch".format(avg_infer)
-            log_fn("First iteration: {:.3f} sec/batch".format(first_infer_time)
+            log_fn("Average: {:.3f} sec/batch".format(avg_infer))
+            log_fn("First iteration: {:.3f} sec/batch".format(first_infer_time))
             log_fn("Average excluding first iteration: {:.3f} sec/batch".format(avg_infer_no_first))
 
     def _benchmark_cnn(self):
