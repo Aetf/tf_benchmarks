@@ -1024,13 +1024,17 @@ class StatsState(object):
             self.moving_latency = self.moving_latency[-size:]
 
     def handle_control_request(self):
+        while self.process_one_request(self):
+            pass
+
+    def process_one_request(self):
         if self.control_pipe_fd_in is None:
-            return
+            return False
 
         # check fd_in has anything to read
         data = read_nonblock(self.control_pipe_fd_in)
         if data is None:
-            return
+            return False
 
         log_fn(f'Got control request: {data[0]}')
 
@@ -1081,6 +1085,7 @@ class StatsState(object):
             # write data
             f.write(data)
         log_fn(f'Done handle request')
+        return True
 
     def print_summary(self):
         log_fn("Average: {:.3f} sec/batch".format(self.avg_infer))
