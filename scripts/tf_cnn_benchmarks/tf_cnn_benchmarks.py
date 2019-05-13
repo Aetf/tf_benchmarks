@@ -1024,7 +1024,7 @@ class StatsState(object):
             self.moving_latency = self.moving_latency[-size:]
 
     def handle_control_request(self):
-        while self.process_one_request(self):
+        while self.process_one_request():
             pass
 
     def process_one_request(self):
@@ -1513,7 +1513,7 @@ class BenchmarkCNN(object):
                 done_fn = lambda: global_step_watcher.done()
             if FLAGS.num_seconds is not None:
                 if FLAGS.num_seconds == -1:
-                    done_fn = STATE.done()
+                    done_fn = lambda: STATE.done()
                 else:
                     whole_begin_time = time.time()
                     done_fn = lambda: time.time() - whole_begin_time > FLAGS.num_seconds
