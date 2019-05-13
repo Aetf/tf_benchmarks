@@ -1032,6 +1032,7 @@ class StatsState(object):
             return False
 
         # check fd_in has anything to read
+        log_fn(f'Handling control request')
         data = read_nonblock(self.control_pipe_fd_in)
         if data is None:
             return False
